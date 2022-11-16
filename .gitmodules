@@ -1,3 +1,6 @@
 [submodule "tests/dependencies/unittest"]
 	path = tests/dependencies/unittest
 	url = git@github.com:hpeteri/unittest
+[submodule "tests/dependencies/timestamp"]
+	path = tests/dependencies/timestamp
+	url = git@github.com:hpeteri/timestamp

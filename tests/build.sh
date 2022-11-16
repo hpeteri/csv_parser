@@ -7,9 +7,9 @@ WARNINGS="-Wformat=2
           -Wparentheses 
           -Wuninitialized
           -Wsign-compare 
-          -Werror"  
+          -Werror"
 
-COMPILER_FALGS="-O0"
+COMPILER_FLAGS="-O2 -mavx2 "
 INCLUDE_FOLDERS="-I ../
                  -I ./dependencies/"
 
@@ -23,7 +23,7 @@ fi
 
 echo "Building $PROJECT_NAME"
 echo
-g++ -g $PREPROCESSOR $COMPILER_FLAGS $WARNINGS  $INCLUDE_FOLDERS "./src/test_main.cpp" -o "./build/tests.a"
+g++ -s $PREPROCESSOR $COMPILER_FLAGS $WARNINGS $INCLUDE_FOLDERS "./src/test_main.cpp" -o "./build/tests.a"
 
 echo
 echo "Done"
