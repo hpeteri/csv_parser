@@ -9,24 +9,30 @@ WARNINGS="-Wformat=2
           -Wsign-compare 
           -Werror"
 
-COMPILER_FLAGS="-O2 -mavx2 "
+COMPILER_FLAGS="-mavx2"
 INCLUDE_FOLDERS="-I ../
                  -I ./dependencies/"
 
 pushd "$(dirname ${BASH_SOURCE[0]})"
-echo "$(pwd)"
 
 if [ ! -d "build" ]
 then
     mkdir build
 fi
 
-echo "Building $PROJECT_NAME"
-echo
-g++ -s $PREPROCESSOR $COMPILER_FLAGS $WARNINGS $INCLUDE_FOLDERS "./src/test_main.cpp" -o "./build/tests.a"
+#command line arguments
+if [[ $1 == "debug" ]]
+then
+    echo "debug build"
+    COMPILER_FLAGS="-O0 $COMPILER_FLAGS"
+    PREPROCESSOR="-g"
+else
+    echo "release build"
+    COMPILER_FLAGS="-O3 $COMPILER_FLAGS"
+    PREPROCESSOR="-s"
+fi
 
-echo
-echo "Done"
+g++ $PREPROCESSOR $COMPILER_FLAGS $WARNINGS $INCLUDE_FOLDERS "./src/test_main.cpp" -o "./build/tests.a"
 
 popd
 
