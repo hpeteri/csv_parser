@@ -41,8 +41,7 @@ void test_csv(const char* filename, void (*parsefunc)(n1_CSV_Parser* parser, cha
 
 int main(){
   const char* filenames[] = {
-    "test_data/sha1_dump/test_data/pwnd.csv",
-    
+
     "test_data/denver_crime_data/test_data/offense_codes.csv",
     "test_data/denver_crime_data/test_data/crime.csv",
 
@@ -52,7 +51,7 @@ int main(){
     "test_data/airbnb_paris/test_data/reviews.csv",
     
     "test_data/used_cars/test_data/vehicles.csv",
-
+    //"test_data/sha1_dump/test_data/pwnd.csv",
     
   };
   
