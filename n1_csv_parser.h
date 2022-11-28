@@ -1,6 +1,6 @@
 /*
-Copyright (c) 2022 Henrik Peteri.
-All rights reserved.
+  Copyright (c) 2022 Henrik Peteri.
+  All rights reserved.
 */
 
 #ifndef N1_CSV_PARSER_H
@@ -34,26 +34,26 @@ struct n1_CSV_Cell;
 
 N1_CSV_STATIC_API struct n1_CSV_Parser* n1_create_csv_parser(const char* filename);
 
-N1_CSV_STATIC_API void n1_destroy_csv_parser(n1_CSV_Parser* parser);
+N1_CSV_STATIC_API void n1_destroy_csv_parser(struct n1_CSV_Parser* parser);
 
 //API for single-threaded parsing
-N1_CSV_STATIC_API void n1_csv_parse_slow(n1_CSV_Parser* parser,
+N1_CSV_STATIC_API void n1_csv_parse_slow(struct n1_CSV_Parser* parser,
                                          char delim_token,
                                          char quote_token,
                                          char row_token);
 
 //API for multi-threaded parsing
-N1_CSV_STATIC_API void n1_csv_parse_threaded_slow(n1_CSV_Parser* parser,
+N1_CSV_STATIC_API void n1_csv_parse_threaded_slow(struct n1_CSV_Parser* parser,
                                                   char delim_token,
                                                   char quote_token,
                                                   char row_token);
 
-N1_CSV_STATIC_API void n1_csv_parse_threaded_sse2(n1_CSV_Parser* parser,
+N1_CSV_STATIC_API void n1_csv_parse_threaded_sse2(struct n1_CSV_Parser* parser,
                                                   char delim_token,
                                                   char quote_token,
                                                   char row_token);
 
-N1_CSV_STATIC_API void n1_csv_parse_threaded_avx256(n1_CSV_Parser* parser,
+N1_CSV_STATIC_API void n1_csv_parse_threaded_avx256(struct n1_CSV_Parser* parser,
                                                     char delim_token,
                                                     char quote_token,
                                                     char row_token);
@@ -63,8 +63,11 @@ N1_CSV_STATIC_API void n1_csv_parse_threaded_avx256(n1_CSV_Parser* parser,
 //Before including this file, define N1_CSV_IMPLEMENTATION in one file to api definitions
 #ifdef N1_CSV_IMPLEMENTATION
 
+#define N1_CSV_TRUE  (1)
+#define N1_CSV_FALSE (0)
+
 #include <stdint.h>
-#include <cstdio>
+#include <stdio.h>
 #include <immintrin.h>
 
 #if defined(__linux__)
@@ -72,6 +75,8 @@ N1_CSV_STATIC_API void n1_csv_parse_threaded_avx256(n1_CSV_Parser* parser,
 #include <pthread.h>
 #include <unistd.h>
 #include <sys/sysinfo.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #elif defined(_WIN32)
 
@@ -82,7 +87,7 @@ N1_CSV_STATIC_API void n1_csv_parse_threaded_avx256(n1_CSV_Parser* parser,
 
 
 #ifndef n1_csv_malloc
-#include <cstdlib>
+#include <stdlib.h>
 #define n1_csv_malloc malloc
 #endif
 
@@ -95,26 +100,26 @@ N1_CSV_STATIC_API void n1_csv_parse_threaded_avx256(n1_CSV_Parser* parser,
 #endif
 
 #ifndef n1_memset
-#include <cstring>
+#include <string.h>
 #define n1_memset memset
 #endif
 
 /* INTERNAL STRUCT & ENUM DEFINITIONS */
 
-enum N1_CSV_TOKEN_TYPE{
+typedef enum N1_CSV_TOKEN_TYPE{
   N1_CSV_TOKEN_TYPE_INVALID = 0,
   N1_CSV_TOKEN_TYPE_DELIM,
   N1_CSV_TOKEN_TYPE_QUOTE,
   N1_CSV_TOKEN_TYPE_ROW,
   N1_CSV_TOKEN_TYPE_NULL,
-};
+} N1_CSV_TOKEN_TYPE;
 
-struct n1_CSV_Cell{
+typedef struct n1_CSV_Cell{
   uint32_t start;
   uint32_t end;  
-};
+} n1_CSV_Cell;
 
-struct n1_CSV_Parser{
+typedef struct n1_CSV_Parser{
   char* filename;
 
   size_t file_size;
@@ -124,20 +129,20 @@ struct n1_CSV_Parser{
   uint64_t cell_count;
 
   n1_CSV_Cell* cell_data;
-};
+} n1_CSV_Parser;
 
-struct n1_CSV_Token{
+typedef struct n1_CSV_Token{
   N1_CSV_TOKEN_TYPE type;
   uint32_t          offset;  
-};
+} n1_CSV_Token;
 
-struct n1_CSV_TokenStream{
+typedef struct n1_CSV_TokenStream{
   uint32_t      token_count;
   uint32_t      max_tokens;
   n1_CSV_Token* tokens;
-};
+} n1_CSV_TokenStream;
 
-struct n1_CSV_ParseInfo{
+typedef struct n1_CSV_ParseInfo{
   n1_CSV_Parser*     parser;
   size_t             file_offset;
   size_t             bytes_to_read;
@@ -145,7 +150,7 @@ struct n1_CSV_ParseInfo{
   char               delim_token, quote_token, row_token;
   void (*tokenize_proc)(n1_CSV_Parser*, n1_CSV_TokenStream*, char, char, char, char*, size_t, size_t);
  
-};
+} n1_CSV_ParseInfo;
 
 /* INTERNAL FUNCTION DECLARAATIONS */
 
@@ -188,16 +193,16 @@ static void n1_csv_tokenize_avx256(n1_CSV_Parser* parser,
                                    size_t bytes_to_read);
 
 //Convert tokens into cells.
-static bool n1_csv_parse_tokens(n1_CSV_Parser* parser,
+static int8_t n1_csv_parse_tokens(n1_CSV_Parser* parser,
                                 uint32_t token_count,
                                 n1_CSV_Token* tokens,
                                 n1_CSV_Token* prev_token,
-                                bool* is_quoted,
+                                int8_t* is_quoted,
                                 uint32_t* cell_start,
                                 uint32_t* row_idx,
                                 int* start_quote_count,
                                 int* end_quote_count,
-                                bool* start_of_cell);
+                                int8_t* is_start_of_cell);
 
 //Called from main API parse function with a tokenizer threadproc
 //after file has been tokenized, n1_csv_parse_tokens is called.
@@ -281,7 +286,13 @@ static void n1_csv_tokenize_paged(n1_CSV_ParseInfo* parse_info){
   
   //open file
 #if defined(__linux__)
-  FILE* file = fopen(parser->filename, "rb");
+  int file = open(parser->filename,
+                  O_RDONLY);
+  if(file == -1){
+    perror("Failed to reopen file:");
+    //abort?
+  }
+
 #elif defined(_WIN32)
   HANDLE file = CreateFile(parser->filename,
                            GENERIC_READ,
@@ -290,16 +301,18 @@ static void n1_csv_tokenize_paged(n1_CSV_ParseInfo* parse_info){
                            OPEN_EXISTING,
                            FILE_ATTRIBUTE_READONLY,
                            NULL);
-#endif
   
-  if(!file){
+  if(file == INVALID_HANDLE_VALUE){
     perror("Failed to reopen file:");
     //abort?
   }
 
+#endif
+  
 #if defined(__linux__)
   //set file position
-  fseek(file, (int32_t)offset, SEEK_SET);
+  //fseek(file, (int32_t)offset, SEEK_SET);
+  lseek(file, offset, SEEK_SET);
 #elif defined(_WIN32)
   SetFilePointer(file, (LONG)offset, ((LONG*)&offset) + 1, FILE_BEGIN);
 #endif
@@ -310,10 +323,7 @@ static void n1_csv_tokenize_paged(n1_CSV_ParseInfo* parse_info){
   for(int i = 0; i < iterations; i++){
 #if defined(__linux__)
     
-    fread(buffer,
-          page_size,
-          1,
-          file);
+    read(file, buffer, page_size);
     
 #elif defined(_WIN32)
     
@@ -325,7 +335,6 @@ static void n1_csv_tokenize_paged(n1_CSV_ParseInfo* parse_info){
     
 #endif
     
-    offset += page_size;
     parse_info->tokenize_proc(parser,
                               tokens,
                               parse_info->delim_token,
@@ -334,16 +343,13 @@ static void n1_csv_tokenize_paged(n1_CSV_ParseInfo* parse_info){
                               buffer,
                               offset,
                               page_size); 
+    offset += page_size;
   }
   
   {
 #if defined(__linux__)
+    read(file, buffer, page_size);
 
-    fread(buffer,
-          parse_info->bytes_to_read % page_size,
-          1,
-          file);
-    
 #elif defined(_WIN32)
     
     ReadFile(file,
@@ -368,7 +374,7 @@ static void n1_csv_tokenize_paged(n1_CSV_ParseInfo* parse_info){
 
 #if defined(__linux__)
   
-  fclose(file);
+  close(file);
   
 #elif defined(_WIN32)
   
@@ -389,11 +395,11 @@ static void n1_csv_tokenize_slow(n1_CSV_Parser* parser,
   const char* end = at + bytes_to_read;
   
   for(; at < end; at++){
-    const bool has_delim = *at == delim_token;
-    const bool has_quote = *at == quote_token;
-    const bool has_row   = *at == row_token;
-    const bool has_null  = *at == 0;
-    const bool has_token = has_delim || has_quote || has_row || has_null;
+    const int8_t has_delim = *at == delim_token;
+    const int8_t has_quote = *at == quote_token;
+    const int8_t has_row   = *at == row_token;
+    const int8_t has_null  = *at == 0;
+    const int8_t has_token = has_delim || has_quote || has_row || has_null;
         
     if(!has_token){
       continue;
@@ -558,31 +564,31 @@ static void n1_csv_tokenize_avx256(n1_CSV_Parser* parser,
   }
 }
 
-static bool n1_csv_parse_tokens(n1_CSV_Parser* parser,
+static int8_t n1_csv_parse_tokens(n1_CSV_Parser* parser,
                                 uint32_t token_count,
                                 n1_CSV_Token* tokens,
                                 n1_CSV_Token* prev_token,
-                                bool* is_quoted,
+                                int8_t* is_quoted,
                                 uint32_t* cell_start,
                                 uint32_t* row_idx,
                                 int* start_quote_count,
                                 int* end_quote_count,
-                                bool* start_of_cell){
+                                int8_t* is_start_of_cell){
 
   for(uint32_t token_idx = 0; token_idx < token_count; token_idx++){
     
     n1_CSV_Token token = tokens[token_idx];
     
     //is token next to previous token
-    bool next_to_previous = (prev_token->offset + 1) == token.offset;
+    int8_t next_to_previous = (prev_token->offset + 1) == token.offset;
 
     if(!next_to_previous){
-      *start_of_cell = false;
+      *is_start_of_cell = N1_CSV_FALSE;
     }
       
     //handle quotation at the start of cell
     if(token.type == N1_CSV_TOKEN_TYPE_QUOTE){
-      if(*start_of_cell){ //if start of cell, keep calculating how many quotes we have
+      if(*is_start_of_cell){ //if start of cell, keep calculating how many quotes we have
         if(next_to_previous){
           (*start_quote_count) ++;
         }
@@ -593,7 +599,7 @@ static bool n1_csv_parse_tokens(n1_CSV_Parser* parser,
         (*end_quote_count) ++;
       }
     }else{
-      *start_of_cell = false;
+      *is_start_of_cell = N1_CSV_FALSE;
       *is_quoted = *start_quote_count % 2;
       if(prev_token->type == N1_CSV_TOKEN_TYPE_QUOTE && *is_quoted){
         if(*end_quote_count){
@@ -613,7 +619,7 @@ static bool n1_csv_parse_tokens(n1_CSV_Parser* parser,
         n1_csv_maybe_realloc_cell_data(parser);
         *prev_token = token;
   
-        return false;
+        return N1_CSV_FALSE;
       }
         
       else if(token.type == N1_CSV_TOKEN_TYPE_DELIM ||
@@ -629,7 +635,7 @@ static bool n1_csv_parse_tokens(n1_CSV_Parser* parser,
           parser->cell_data[parser->cell_count++] = cell;
           n1_csv_maybe_realloc_cell_data(parser);
             
-          *start_of_cell = true;
+          *is_start_of_cell = N1_CSV_TRUE;
           *start_quote_count = 0;
           *cell_start = token.offset + 1;
           
@@ -647,7 +653,7 @@ static bool n1_csv_parse_tokens(n1_CSV_Parser* parser,
     }      
     *prev_token = token;
   }
-  return true;
+  return N1_CSV_TRUE;
 }
 
 static void n1_csv_parse_threaded(n1_CSV_Parser* parser,
@@ -663,14 +669,13 @@ static void n1_csv_parse_threaded(n1_CSV_Parser* parser,
   const size_t   page_size    = n1_csv_get_page_size();
   const uint32_t processor_count = n1_csv_get_processor_count();
   
-  uint32_t thread_count = parser->file_size / page_size;
+  uint32_t thread_count = (uint32_t)(parser->file_size / page_size);
   if(!thread_count){
     thread_count = 1;
   }else if(thread_count > processor_count){
     thread_count = processor_count;
   }
-  printf("got %d threads\n", thread_count);
-  
+    
   size_t bytes_to_read = (parser->file_size / thread_count);
   bytes_to_read += 32 - (bytes_to_read % 32);
   
@@ -705,7 +710,7 @@ static void n1_csv_parse_threaded(n1_CSV_Parser* parser,
     offset += bytes_to_read;
         
 #if defined(__linux__)
-    pthread_create(&threads[i], nullptr, (void*(*)(void*))n1_csv_tokenize_paged, &infos[i]);
+    pthread_create(&threads[i], NULL, (void*(*)(void*))n1_csv_tokenize_paged, &infos[i]);
 #elif defined(_WIN32)
     DWORD id;
     threads[i] = CreateThread(NULL, 0, (DWORD(*)(void*))n1_csv_tokenize_paged, &infos[i], 0, &id);
@@ -718,20 +723,20 @@ static void n1_csv_parse_threaded(n1_CSV_Parser* parser,
   
   //--------------------------
   
-  n1_CSV_Token prev_token        = {};
-  bool         is_quoted         = false;
+  n1_CSV_Token prev_token        = {0, 0};
+  int8_t       is_quoted         = N1_CSV_FALSE;
   uint32_t     cell_start        = 0;
   uint32_t     row_idx           = 0;
-  bool         keep_processing   = true;
+  int8_t       keep_processing   = N1_CSV_TRUE;
   int          start_quote_count = 0;
   int          end_quote_count   = 0;
-  bool         start_of_cell     = true;
+  int8_t       is_start_of_cell  = N1_CSV_TRUE;
 
-  bool run = true;
+  int8_t run = N1_CSV_TRUE;
   for(uint32_t i = 0; i < thread_count; i++){
     
 #if defined(__linux__)
-    pthread_join(threads[i], nullptr);
+    pthread_join(threads[i], NULL);
 #elif defined(_WIN32)
     WaitForSingleObject(threads[i], INFINITE);
 #endif
@@ -745,7 +750,7 @@ static void n1_csv_parse_threaded(n1_CSV_Parser* parser,
                                 &row_idx,
                                 &start_quote_count,
                                 &end_quote_count,
-                                &start_of_cell);
+                                &is_start_of_cell);
     n1_csv_free(infos[i].tokens.tokens);
   }
   
@@ -766,8 +771,15 @@ N1_CSV_STATIC_API struct n1_CSV_Parser* n1_create_csv_parser(const char* filenam
   memcpy(parser->filename, filename, len + 1);
 
 #if defined(__linux__)
-  
-  FILE* file = fopen(filename, "rb");
+
+  struct stat file_stat;
+
+  if(!stat(filename, &file_stat)){
+    parser->file_size = file_stat.st_size;
+    parser->file_size += 32 - (parser->file_size % 32);
+  }else{
+    perror("Failed to open file:");
+  }
   
 #elif defined(_WIN32)
   
@@ -779,43 +791,18 @@ N1_CSV_STATIC_API struct n1_CSV_Parser* n1_create_csv_parser(const char* filenam
                            FILE_ATTRIBUTE_READONLY,
                            NULL);
  
-#endif
-
-
-  
-  if(file != NULL){
-    
-#if defined(__linux__)
-
-    fseek(file, 0, SEEK_END);
-
-    //align filesize to avx256
-    parser->file_size = ftell(file);
-
-    //Failed to get size?
-    if(parser->file_size == (size_t)-1){
-      perror("ftell(): ");
-      parser->file_size = 0;
-    }else{
-      parser->file_size += 32 - (parser->file_size % 32);
-    }
-    fclose(file);
-
-#elif defined(_WIN32)
-
+  if(file != INVALID_HANDLE_VALUE){
     LARGE_INTEGER file_size;
     GetFileSizeEx(file, &file_size);
     parser->file_size = file_size.QuadPart;
     parser->file_size += 32 - (parser->file_size % 32);
 
     CloseHandle(file);
-
-#endif
-
   }else{
     perror("Failed to open file:");
   }
-
+  
+#endif
   return parser;
 }
 
@@ -855,14 +842,14 @@ N1_CSV_STATIC_API void n1_csv_parse_slow(n1_CSV_Parser* parser,
   parser->row_count     = 1;
   parser->cell_data     = (n1_CSV_Cell*)n1_csv_malloc(sizeof(n1_CSV_Cell) * parser->column_count);
   
-  n1_CSV_Token prev_token        = {};
-  bool         is_quoted         = false;
+  n1_CSV_Token prev_token        = {0,0};
+  int8_t       is_quoted         = N1_CSV_FALSE;
   uint32_t     cell_start        = 0;
   uint32_t     row_idx           = 0;
-  bool         keep_processing   = true;
+  int8_t       keep_processing   = N1_CSV_TRUE;
   int          start_quote_count = 0;
   int          end_quote_count   = 0;
-  bool         start_of_cell     = true;
+  int8_t       is_start_of_cell  = N1_CSV_TRUE;
   
   n1_csv_parse_tokens(parser,
                       info.tokens.token_count,
@@ -873,7 +860,7 @@ N1_CSV_STATIC_API void n1_csv_parse_slow(n1_CSV_Parser* parser,
                       &row_idx,
                       &start_quote_count,
                       &end_quote_count,
-                      &start_of_cell);
+                      &is_start_of_cell);
   
   n1_csv_free(info.tokens.tokens);
 }

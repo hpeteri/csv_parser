@@ -32,7 +32,7 @@ else
     PREPROCESSOR="-s"
 fi
 
-g++ $PREPROCESSOR $COMPILER_FLAGS $WARNINGS $INCLUDE_FOLDERS "./src/test_main.cpp" -o "./build/tests.a"
+gcc $PREPROCESSOR $COMPILER_FLAGS $WARNINGS $INCLUDE_FOLDERS "./src/test_main.c" -o "./build/tests.a"
 
 popd
 

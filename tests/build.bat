@@ -8,10 +8,10 @@ set PROJECT_NAME="csv_parser_tests"
 
 set COMPILER_FLAGS= ^
 /WX /W4 /WL /wd4189 /wd4201 /wd4312 /wd4456 /wd4127 /wd4100 /wd4505 /wd4702 /wd4701 /we4457 /we4456 ^
-/Zi /O2i /nologo /MT /EHsc-
+/Zi /Oi /nologo /MT /EHsc-
 
 set SRC=^
-src/test_main.cpp
+src/test_main.c
 
 set INCLUDE_FOLDERS= ^
 /I ../ ^
