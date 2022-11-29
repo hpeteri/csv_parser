@@ -1,10 +1,12 @@
 /*
-  Copyright (c) 2022 Henrik Peteri.
+  Copyright (c) 2022 Henrik Peteri (www.github.com/hpeteri).
   All rights reserved.
 */
 
 #ifndef N1_CSV_PARSER_H
 #define N1_CSV_PARSER_H
+
+#include <stdint.h>
 
 #define N1_CSV_STATIC_API static
 
@@ -16,6 +18,7 @@
 ----------------------------------------
 * API
 -- API struct declaration
+-- API struct definitions
 -- API function declaration
 
 * Implementation
@@ -27,33 +30,46 @@
 
 /* API struct declaration */
 
-struct n1_CSV_Parser;
-struct n1_CSV_Cell;
+typedef struct n1_CSV_Parser   n1_CSV_Parser;
+typedef struct n1_CSV_Cell     n1_CSV_Cell;
+typedef struct n1_CSV_CellPage n1_CSV_CellPage;
+typedef struct n1_CSV_String   n1_CSV_String;
+
+/* API struct definitions */
+
+typedef struct n1_CSV_String{
+  char*    data;
+  uint32_t length;
+} n1_CSV_String;
 
 /* API function declaration */
 
-N1_CSV_STATIC_API struct n1_CSV_Parser* n1_create_csv_parser(const char* filename);
+N1_CSV_STATIC_API n1_CSV_Parser* n1_create_csv_parser(const char* filename);
 
-N1_CSV_STATIC_API void n1_destroy_csv_parser(struct n1_CSV_Parser* parser);
+N1_CSV_STATIC_API void n1_destroy_csv_parser( n1_CSV_Parser* parser);
+
+N1_CSV_STATIC_API n1_CSV_String n1_csv_get_cell_transient(n1_CSV_Parser* parser,
+                                                          uint32_t column,
+                                                          uint32_t row);
 
 //API for single-threaded parsing
-N1_CSV_STATIC_API void n1_csv_parse_slow(struct n1_CSV_Parser* parser,
+N1_CSV_STATIC_API void n1_csv_parse_slow(n1_CSV_Parser* parser,
                                          char delim_token,
                                          char quote_token,
                                          char row_token);
 
 //API for multi-threaded parsing
-N1_CSV_STATIC_API void n1_csv_parse_threaded_slow(struct n1_CSV_Parser* parser,
+N1_CSV_STATIC_API void n1_csv_parse_threaded_slow(n1_CSV_Parser* parser,
                                                   char delim_token,
                                                   char quote_token,
                                                   char row_token);
 
-N1_CSV_STATIC_API void n1_csv_parse_threaded_sse2(struct n1_CSV_Parser* parser,
+N1_CSV_STATIC_API void n1_csv_parse_threaded_sse2(n1_CSV_Parser* parser,
                                                   char delim_token,
                                                   char quote_token,
                                                   char row_token);
 
-N1_CSV_STATIC_API void n1_csv_parse_threaded_avx256(struct n1_CSV_Parser* parser,
+N1_CSV_STATIC_API void n1_csv_parse_threaded_avx256(n1_CSV_Parser* parser,
                                                     char delim_token,
                                                     char quote_token,
                                                     char row_token);
@@ -66,7 +82,6 @@ N1_CSV_STATIC_API void n1_csv_parse_threaded_avx256(struct n1_CSV_Parser* parser
 #define N1_CSV_TRUE  (1)
 #define N1_CSV_FALSE (0)
 
-#include <stdint.h>
 #include <stdio.h>
 #include <immintrin.h>
 
@@ -112,12 +127,27 @@ typedef enum N1_CSV_TOKEN_TYPE{
   N1_CSV_TOKEN_TYPE_QUOTE,
   N1_CSV_TOKEN_TYPE_ROW,
   N1_CSV_TOKEN_TYPE_NULL,
+
 } N1_CSV_TOKEN_TYPE;
 
 typedef struct n1_CSV_Cell{
   uint32_t start;
   uint32_t end;  
+
 } n1_CSV_Cell;
+
+typedef struct n1_CSV_CellPage{
+#if defined(__linux__)
+  int file_handle;
+#elif defined(__WIN32)
+  HANDLE file_handle;
+#endif
+
+  size_t start;
+  size_t end;
+  char*  data;
+  
+} n1_CSV_CellPage;
 
 typedef struct n1_CSV_Parser{
   char* filename;
@@ -127,19 +157,24 @@ typedef struct n1_CSV_Parser{
   uint32_t row_count;
   uint32_t column_count;
   uint64_t cell_count;
-
-  n1_CSV_Cell* cell_data;
+  
+  n1_CSV_Cell*     cell_data;
+  
+  n1_CSV_CellPage  cell_page;
+  
 } n1_CSV_Parser;
 
 typedef struct n1_CSV_Token{
   N1_CSV_TOKEN_TYPE type;
   uint32_t          offset;  
+
 } n1_CSV_Token;
 
 typedef struct n1_CSV_TokenStream{
   uint32_t      token_count;
   uint32_t      max_tokens;
   n1_CSV_Token* tokens;
+  
 } n1_CSV_TokenStream;
 
 typedef struct n1_CSV_ParseInfo{
@@ -194,15 +229,15 @@ static void n1_csv_tokenize_avx256(n1_CSV_Parser* parser,
 
 //Convert tokens into cells.
 static int8_t n1_csv_parse_tokens(n1_CSV_Parser* parser,
-                                uint32_t token_count,
-                                n1_CSV_Token* tokens,
-                                n1_CSV_Token* prev_token,
-                                int8_t* is_quoted,
-                                uint32_t* cell_start,
-                                uint32_t* row_idx,
-                                int* start_quote_count,
-                                int* end_quote_count,
-                                int8_t* is_start_of_cell);
+                                  uint32_t token_count,
+                                  n1_CSV_Token* tokens,
+                                  n1_CSV_Token* prev_token,
+                                  int8_t* is_quoted,
+                                  uint32_t* cell_start,
+                                  uint32_t* row_idx,
+                                  int* start_quote_count,
+                                  int* end_quote_count,
+                                  int8_t* is_start_of_cell);
 
 //Called from main API parse function with a tokenizer threadproc
 //after file has been tokenized, n1_csv_parse_tokens is called.
@@ -321,6 +356,7 @@ static void n1_csv_tokenize_paged(n1_CSV_ParseInfo* parse_info){
   const int iterations = (int)(parse_info->bytes_to_read / page_size);
         
   for(int i = 0; i < iterations; i++){
+    
 #if defined(__linux__)
     
     read(file, buffer, page_size);
@@ -565,15 +601,15 @@ static void n1_csv_tokenize_avx256(n1_CSV_Parser* parser,
 }
 
 static int8_t n1_csv_parse_tokens(n1_CSV_Parser* parser,
-                                uint32_t token_count,
-                                n1_CSV_Token* tokens,
-                                n1_CSV_Token* prev_token,
-                                int8_t* is_quoted,
-                                uint32_t* cell_start,
-                                uint32_t* row_idx,
-                                int* start_quote_count,
-                                int* end_quote_count,
-                                int8_t* is_start_of_cell){
+                                  uint32_t token_count,
+                                  n1_CSV_Token* tokens,
+                                  n1_CSV_Token* prev_token,
+                                  int8_t* is_quoted,
+                                  uint32_t* cell_start,
+                                  uint32_t* row_idx,
+                                  int* start_quote_count,
+                                  int* end_quote_count,
+                                  int8_t* is_start_of_cell){
 
   for(uint32_t token_idx = 0; token_idx < token_count; token_idx++){
     
@@ -811,7 +847,126 @@ N1_CSV_STATIC_API void n1_destroy_csv_parser(n1_CSV_Parser* parser){
   n1_csv_free(parser->cell_data);
   n1_csv_free(parser->filename);
 
+  if(parser->cell_page.data){
+    n1_csv_free(parser->cell_page.data);
+
+#if defined(__linux__)
+    close(parser->cell_page.file_handle);
+#elif defined(_WIN32)
+    CloseHandle(parser->cell_page.file_handle);
+#endif
+
+  }
+  
   n1_csv_free(parser);
+  
+}
+
+N1_CSV_STATIC_API n1_CSV_String n1_csv_get_cell_transient(n1_CSV_Parser* parser,
+                                                          uint32_t column,
+                                                          uint32_t row){
+
+  uint64_t idx = parser->column_count * row + column;
+
+  if(idx >= parser->cell_count){
+    n1_CSV_String string;
+    string.data   = NULL;
+    string.length = 0;
+    return string;
+  }
+
+  n1_CSV_Cell cell = parser->cell_data[idx];
+  
+  size_t   page_size = n1_csv_get_page_size();
+  uint32_t page_idx  = cell.start / page_size;
+
+  n1_CSV_CellPage* page = &parser->cell_page;
+
+  int8_t reload_file = N1_CSV_FALSE;
+  if(!page->data){
+
+    size_t needed_size = cell.end - (page_idx * page_size);
+    if(needed_size < page_size){
+      needed_size = page_size;
+    }
+    
+    page->data              = (char*)n1_csv_malloc(needed_size + 1);
+    page->start             = page_idx * page_size;
+    page->end               = page->start + needed_size;
+    page->data[needed_size] = 0;
+
+    reload_file             = N1_CSV_TRUE;
+
+  }else if(cell.end > page->end){
+    
+    size_t needed_size = cell.end - (page_idx * page_size);
+    if(needed_size < page_size){
+      needed_size = page_size;
+    }
+
+    page->data              = (char*)n1_csv_realloc(page->data, needed_size + 1);
+    page->start             = page_idx * page_size;
+    page->end               = page->start + needed_size;
+    page->data[needed_size] = 0;
+
+    reload_file             = N1_CSV_TRUE;
+  }
+
+
+  if(reload_file){
+    
+    //printf("\n!!!Reload file %d %ld - %ld!!!\n", page_idx, page->start, page->end);
+#if defined(__linux__)
+    
+    if(page->file_handle == 0){
+      page->file_handle = open(parser->filename,
+                               O_RDONLY);
+      
+    }
+    
+    int file = page->file_handle;
+
+    if(file == -1){
+      perror("Failed to open file:");
+      //abort?
+    }
+  
+    lseek(file, (page->start), SEEK_SET);
+    read(file, page->data, page->end - page->start);
+     
+#elif defined(_WIN32)
+    if(page->file_handle == 0){
+      page->file_handle = CreateFile(parser->filename,
+                                     GENERIC_READ,
+                                     FILE_SHARE_READ,
+                                     NULL,
+                                     OPEN_EXISTING,
+                                     FILE_ATTRIBUTE_READONLY,
+                                     NULL);
+    }
+    
+    HANDLE file = page->file_handle;
+
+    if(file == INVALID_HANDLE_VALUE){
+      perror("Failed to open file:");
+      //abort?
+    }
+
+    uint64_t offset = page->start;
+    SetFilePointer(file, (LONG)offset, ((LONG*)&offset) + 1, FILE_BEGIN);
+    ReadFile(file,
+             page->data,
+             page->end - page->start,
+             NULL,
+             NULL);
+#endif
+  }
+  
+  n1_CSV_String string;
+  string.data = page->data + (cell.start - (page_idx * page_size) );
+  string.length = cell.end - cell.start;
+  
+  return string;
   
 }
 
@@ -864,7 +1019,6 @@ N1_CSV_STATIC_API void n1_csv_parse_slow(n1_CSV_Parser* parser,
   
   n1_csv_free(info.tokens.tokens);
 }
-
 
 N1_CSV_STATIC_API void n1_csv_parse_threaded_slow(n1_CSV_Parser* parser,
                                                   char delim_token,
