@@ -42,7 +42,25 @@ void test_csv(const char* filename, void (*parsefunc)(struct n1_CSV_Parser* pars
     uint64_t time = (end - start);
     
     PRINT_LOG_PARSER(filename, parser, info, time);
+
+    uint64_t start_0 = n1_gettimestamp_microseconds();
+    for(uint32_t i = 0; i < parser->row_count; i++){
+      for(uint32_t x = 0; x < parser->column_count; x++){
+        n1_CSV_String s = n1_csv_get_cell_transient(parser, x, i);
+        
+        if(s.data){
+          //printf("(%.*s), ", s.length, s.data);
+        }else{
+          i = -2;
+        }
+      }
+      //printf("\n");
+    }
     
+    uint64_t end_0 = n1_gettimestamp_microseconds();
+    uint64_t time_0 = (end_0 - start_0);
+    printf("get cells took %f ms (%f MBps)\n", (time_0) / 1000.0f,
+           (double)(parser->file_size / 1024.0 / 1024.0) / (time_0 / 1000000.0));
     n1_destroy_csv_parser(parser);
   }
 }
@@ -50,21 +68,26 @@ void test_csv(const char* filename, void (*parsefunc)(struct n1_CSV_Parser* pars
 int main(){
   const char* filenames[] = {
 
-    "test_data/denver_crime_data/test_data/offense_codes.csv",
-    "test_data/denver_crime_data/test_data/crime.csv",
-
-    "test_data/airbnb_paris/test_data/calendar.csv",
-    "test_data/airbnb_paris/test_data/listings.csv",
-    "test_data/airbnb_paris/test_data/neighbourhoods.csv",
-    "test_data/airbnb_paris/test_data/reviews.csv",
+    "test_data/test.csv",
     
-    "test_data/used_cars/test_data/vehicles.csv",
-
-    "test_data/sha1_dump/test_data/pwnd.csv",
-
-    "test_data/ddos/test_data/unbalaced_20_80_dataset.csv",
-    "test_data/ddos/test_data/final_dataset.csv"
     
+    "test_data/denver_crime_data/test_data/offense_codes.csv",        
+    
+    "test_data/denver_crime_data/test_data/crime.csv", 
+    
+    "test_data/airbnb_paris/test_data/calendar.csv", 
+    "test_data/airbnb_paris/test_data/listings.csv", 
+    "test_data/airbnb_paris/test_data/neighbourhoods.csv", 
+    "test_data/airbnb_paris/test_data/reviews.csv", 
+
+    "test_data/used_cars/test_data/vehicles.csv", 
+    "test_data/sha1_dump/test_data/pwnd.csv", 
+#if 1
+
+    "test_data/ddos/test_data/unbalaced_20_80_dataset.csv", 
+    "test_data/ddos/test_data/final_dataset.csv" 
+
+#endif
   };
   
   PRINT_LOG_TABLE_HEADER();
